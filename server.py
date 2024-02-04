@@ -1,4 +1,5 @@
 import asyncio
+import copy
 
 from zero import ZeroServer
 from msgspec import Struct
@@ -76,6 +77,7 @@ def fetch_currernt_player():
     conn.close()
     return player
 
+
 def fetch_latest_player():
     conn = sqlite3.connect('players.db')
     cursor = conn.cursor()
@@ -100,7 +102,7 @@ def change_state(player: int):
 app = ZeroServer(port=9000)
 _board = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
 LAST_MOVE = MoveStatus()
-DATA_CHANGE = False
+CLIENTS_FETCHED = 0
 
 
 def gen_token(player: int) -> str:  # function to generate token for player
@@ -143,10 +145,8 @@ async def move(player_move: dict) -> MoveStatus:  # function to receive move fro
 
         winner = check_for_winner()
         _last_move = MoveStatus(row=player_move.row, col=player_move.col, status="Success", move_text=_move_text,
-                               game_status=winner if winner else "")
+                                game_status=winner if winner else "")
         LAST_MOVE = _last_move
-        if winner:
-            clean_up()
         return _last_move
     else:
         return MoveStatus(status="Failed", reason="Not your turn")
@@ -154,7 +154,13 @@ async def move(player_move: dict) -> MoveStatus:  # function to receive move fro
 
 @app.register_rpc
 async def fetch_data() -> MoveStatus:
-    return LAST_MOVE
+    global CLIENTS_FETCHED
+    if CLIENTS_FETCHED == 2:
+        clean_up()
+        CLIENTS_FETCHED = 0
+        return LAST_MOVE
+    else:
+        return LAST_MOVE
 
 
 @app.register_rpc
@@ -171,6 +177,13 @@ async def quit_game(token: str) -> str:
     remove_player(token)
     print(f"{token} has left the game")
     return None
+
+
+@app.register_rpc
+async def final_msg_ack() -> bool:
+    global CLIENTS_FETCHED
+    CLIENTS_FETCHED += 1
+    return True
 
 
 def make_move(row: int, col: int, curr_player: int) -> str:
@@ -215,12 +228,16 @@ def check_for_winner() -> str:
     if all([all(row) for row in _board]) and winner is None:
         winner = "tie"
 
+    if winner:
+        change_state(1)  # when game ends, change the position to player 1
+
     return winner
 
 
-async def clean_up():
+def clean_up():
     global LAST_MOVE
     LAST_MOVE = MoveStatus()
+
 
 def start_server():
     app.run(workers=1)
