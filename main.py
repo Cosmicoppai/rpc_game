@@ -61,6 +61,9 @@ if __name__ == "__main__":
         ZERO_CLIENT.call('quit_game', _player_token)
         ZERO_CLIENT.close()
 
+    def send_ack():
+        ZERO_CLIENT.call('final_msg_ack', None)
+
     def on_closing():
         quit_game()
         window.quit()
@@ -69,7 +72,6 @@ if __name__ == "__main__":
     player_registered = register_players()  # register the player
 
     try:
-
 
         # Create board
         def create_board():
@@ -82,7 +84,6 @@ if __name__ == "__main__":
 
         if player_registered:
             create_board()
-
 
         # Handle button clicks
         def handle_click(row, col):
@@ -98,6 +99,7 @@ if __name__ == "__main__":
                 button = window.grid_slaves(row=move_resp.row, column=move_resp.col)[0]
                 button.config(text=move_resp.move_text)
                 if move_resp.game_status and not WINNER_DECLARED:
+                    send_ack()
                     declare_winner(move_resp.game_status)
             elif move_resp.status.lower() == "none":
                 ...
@@ -109,8 +111,7 @@ if __name__ == "__main__":
             move_resp = ZERO_CLIENT.call('fetch_data', None, return_type=MoveStatus)
             update_state(move_resp)
             if not move_resp.game_status:  # stop fetching data if game is over
-                window.after(200, fetch_data)
-
+                window.after(100, fetch_data)
 
         # Declare the winner and ask to restart the game
         def declare_winner(winner):
@@ -124,13 +125,11 @@ if __name__ == "__main__":
             answer = messagebox.askyesno("Game Over", message + " Do you want to restart the game?")
 
             if answer:
-                reset()
                 for i in range(3):
                     for j in range(3):
                         button = window.grid_slaves(row=i, column=j)[0]
                         button.config(text="")
-
-                fetch_data()
+                reset()
             else:
                 quit_game()
                 window.quit()
